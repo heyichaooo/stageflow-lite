@@ -11,7 +11,7 @@
 - stage 不直接调用下一个 stage
 - cancel / failed / succeeded 只收口一次
 - cancel 后晚到的异步 callback 会被丢弃
-- stage 内部可以再嵌套一个子 flow
+- stage 内部逻辑完全由 stage 自己决定
 
 ## 核心原则
 
@@ -92,19 +92,11 @@ return stageflow::StageRunResult::Pending();
 
 异步 stage 返回 `Pending` 后，必须最终调用一次 `done(error)`。如果 flow 已经被取消，旧 callback 会自动失效，不会推进后续 stage。
 
-## 嵌套 flow
+## Stage 边界
 
-stage 内部也可以嵌套一个子 flow：
+`FlowController` 只关心 stage 是否完成，不关心 stage 内部怎么实现。
 
-```cpp
-auto child_flow = std::make_shared<stageflow::FlowController<Context>>(flow->shared_context());
-child_flow->add_stage(...);
-
-flow->add_stage(std::make_shared<stageflow::CompositeStage<Context>>(
-    "prepare_retouch", child_flow));
-```
-
-父 flow 会把 `CompositeStage` 当成一个普通异步 stage，等子 flow 结束后再继续。
+一个 stage 内部可以直接写同步逻辑，也可以发起异步请求、调用旧模块、拆成多个私有函数，或者自己管理更细的内部步骤。框架只要求 stage 最终通过 `done(error)` 把结果交还给 `FlowController`。
 
 ## 构建
 

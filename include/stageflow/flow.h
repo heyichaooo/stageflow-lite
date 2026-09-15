@@ -309,36 +309,4 @@ private:
     std::shared_ptr<Impl> impl_;
 };
 
-template <typename Context>
-class CompositeStage : public IStage<Context> {
-public:
-    CompositeStage(std::string name, std::shared_ptr<FlowController<Context>> flow)
-        : name_(std::move(name)), flow_(std::move(flow)) {}
-
-    const char* name() const override {
-        return name_.c_str();
-    }
-
-    StageRunResult run(Context& context, typename IStage<Context>::Done done) override {
-        (void)context;
-        flow_->set_finish_callback(std::move(done));
-        ErrorCode error = flow_->start();
-        if (error != kOk) {
-            return StageRunResult::Failed(error);
-        }
-        return StageRunResult::Pending();
-    }
-
-    void cancel(Context& context) override {
-        (void)context;
-        if (flow_) {
-            flow_->cancel();
-        }
-    }
-
-private:
-    std::string name_;
-    std::shared_ptr<FlowController<Context>> flow_;
-};
-
 }  // namespace stageflow
