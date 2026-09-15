@@ -12,7 +12,6 @@ struct TestContext {
 };
 
 using Flow = stageflow::FlowController<TestContext>;
-using Stage = stageflow::FunctionStage<TestContext>;
 
 static int wait_for_finish(const std::shared_ptr<Flow>& flow) {
     std::mutex mutex;
@@ -34,32 +33,70 @@ static int wait_for_finish(const std::shared_ptr<Flow>& flow) {
     return final_error;
 }
 
+class SyncSetStage : public stageflow::IStage<TestContext> {
+public:
+    SyncSetStage(const char* name, int expected, int value)
+        : name_(name), expected_(expected), value_(value) {}
+
+    const char* name() const override {
+        return name_;
+    }
+
+    stageflow::StageRunResult run(TestContext& context, Done) override {
+        assert(context.value == expected_);
+        context.value = value_;
+        return stageflow::StageRunResult::Succeeded();
+    }
+
+private:
+    const char* name_;
+    int expected_;
+    int value_;
+};
+
+class AsyncSetStage : public stageflow::IStage<TestContext> {
+public:
+    const char* name() const override {
+        return "async_2";
+    }
+
+    stageflow::StageRunResult run(TestContext& context, Done done) override {
+        std::thread([&context, done]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            assert(context.value == 1);
+            context.value = 2;
+            done(stageflow::kOk);
+        }).detach();
+        return stageflow::StageRunResult::Pending();
+    }
+};
+
+class PendingStage : public stageflow::IStage<TestContext> {
+public:
+    explicit PendingStage(Done& late_done) : late_done_(late_done) {}
+
+    const char* name() const override {
+        return "pending";
+    }
+
+    stageflow::StageRunResult run(TestContext&, Done done) override {
+        late_done_ = done;
+        return stageflow::StageRunResult::Pending();
+    }
+
+    void cancel(TestContext& context) override {
+        context.canceled = true;
+    }
+
+private:
+    Done& late_done_;
+};
+
 static void runs_sync_and_async_stages_in_order() {
     auto flow = std::make_shared<Flow>();
-    flow->add_stage(std::make_shared<Stage>(
-        "sync_1",
-        [](TestContext& ctx, Stage::Done) {
-            ctx.value = 1;
-            return stageflow::StageRunResult::Succeeded();
-        }));
-    flow->add_stage(std::make_shared<Stage>(
-        "async_2",
-        [](TestContext& ctx, Stage::Done done) {
-            std::thread([&ctx, done]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                assert(ctx.value == 1);
-                ctx.value = 2;
-                done(stageflow::kOk);
-            }).detach();
-            return stageflow::StageRunResult::Pending();
-        }));
-    flow->add_stage(std::make_shared<Stage>(
-        "sync_3",
-        [](TestContext& ctx, Stage::Done) {
-            assert(ctx.value == 2);
-            ctx.value = 3;
-            return stageflow::StageRunResult::Succeeded();
-        }));
+    flow->add_stage(std::make_shared<SyncSetStage>("sync_1", 0, 1));
+    flow->add_stage(std::make_shared<AsyncSetStage>());
+    flow->add_stage(std::make_shared<SyncSetStage>("sync_3", 2, 3));
 
     assert(wait_for_finish(flow) == stageflow::kOk);
     assert(flow->context().value == 3);
@@ -69,21 +106,8 @@ static void runs_sync_and_async_stages_in_order() {
 static void cancel_invalidates_late_callbacks() {
     auto flow = std::make_shared<Flow>();
     stageflow::IStage<TestContext>::Done late_done;
-    flow->add_stage(std::make_shared<Stage>(
-        "pending",
-        [&](TestContext&, Stage::Done done) {
-            late_done = done;
-            return stageflow::StageRunResult::Pending();
-        },
-        [](TestContext& ctx) {
-            ctx.canceled = true;
-        }));
-    flow->add_stage(std::make_shared<Stage>(
-        "must_not_run",
-        [](TestContext& ctx, Stage::Done) {
-            ctx.value = 99;
-            return stageflow::StageRunResult::Succeeded();
-        }));
+    flow->add_stage(std::make_shared<PendingStage>(late_done));
+    flow->add_stage(std::make_shared<SyncSetStage>("must_not_run", 0, 99));
 
     int callback_error = 999;
     flow->set_finish_callback([&](int error) {

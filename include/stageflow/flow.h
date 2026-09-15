@@ -65,35 +65,6 @@ public:
 };
 
 template <typename Context>
-class FunctionStage : public IStage<Context> {
-public:
-    using RunFn = std::function<StageRunResult(Context&, typename IStage<Context>::Done)>;
-    using CancelFn = std::function<void(Context&)>;
-
-    FunctionStage(std::string name, RunFn run, CancelFn cancel = CancelFn())
-        : name_(std::move(name)), run_(std::move(run)), cancel_(std::move(cancel)) {}
-
-    const char* name() const override {
-        return name_.c_str();
-    }
-
-    StageRunResult run(Context& context, typename IStage<Context>::Done done) override {
-        return run_(context, std::move(done));
-    }
-
-    void cancel(Context& context) override {
-        if (cancel_) {
-            cancel_(context);
-        }
-    }
-
-private:
-    std::string name_;
-    RunFn run_;
-    CancelFn cancel_;
-};
-
-template <typename Context>
 class FlowController {
 public:
     using Stage = IStage<Context>;

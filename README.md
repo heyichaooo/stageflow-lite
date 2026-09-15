@@ -37,13 +37,14 @@ struct Context {
 };
 
 using Flow = stageflow::FlowController<Context>;
-using Stage = stageflow::FunctionStage<Context>;
 
-auto flow = std::make_shared<Flow>();
+class PrepareStage : public stageflow::IStage<Context> {
+public:
+    const char* name() const override {
+        return "prepare";
+    }
 
-flow->add_stage(std::make_shared<Stage>(
-    "prepare",
-    [](Context& ctx, Stage::Done done) {
+    stageflow::StageRunResult run(Context& ctx, Done done) override {
         async_prepare([&ctx, done](int error, std::string detect_info) {
             if (error == stageflow::kOk) {
                 ctx.detect_info = std::move(detect_info);
@@ -51,14 +52,25 @@ flow->add_stage(std::make_shared<Stage>(
             done(error);
         });
         return stageflow::StageRunResult::Pending();
-    }));
+    }
+};
 
-flow->add_stage(std::make_shared<Stage>(
-    "create_task",
-    [](Context& ctx, Stage::Done) {
+class CreateTaskStage : public stageflow::IStage<Context> {
+public:
+    const char* name() const override {
+        return "create_task";
+    }
+
+    stageflow::StageRunResult run(Context& ctx, Done) override {
         ctx.task_id = "task-" + std::to_string(ctx.file_id);
         return stageflow::StageRunResult::Succeeded();
-    }));
+    }
+};
+
+auto flow = std::make_shared<Flow>();
+
+flow->add_stage(std::make_shared<PrepareStage>());
+flow->add_stage(std::make_shared<CreateTaskStage>());
 
 flow->set_finish_callback([](int error) {
     // error == stageflow::kOk means succeeded.

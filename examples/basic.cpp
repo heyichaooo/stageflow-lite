@@ -12,42 +12,60 @@ struct RetouchContext {
     std::string task_id;
 };
 
+class PrepareRetouchStage : public stageflow::IStage<RetouchContext> {
+public:
+    const char* name() const override {
+        return "prepare_retouch";
+    }
+
+    stageflow::StageRunResult run(RetouchContext& context, Done done) override {
+        std::thread([&context, done]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            context.detect_info = "person-basic-detect-ready";
+            done(stageflow::kOk);
+        }).detach();
+        return stageflow::StageRunResult::Pending();
+    }
+};
+
+class CreateTaskStage : public stageflow::IStage<RetouchContext> {
+public:
+    const char* name() const override {
+        return "create_task";
+    }
+
+    stageflow::StageRunResult run(RetouchContext& context, Done) override {
+        context.task_id = "preview-task-" + std::to_string(context.file_id);
+        return stageflow::StageRunResult::Succeeded();
+    }
+};
+
+class RunTaskStage : public stageflow::IStage<RetouchContext> {
+public:
+    const char* name() const override {
+        return "run_task";
+    }
+
+    stageflow::StageRunResult run(RetouchContext& context, Done done) override {
+        std::thread([task_id = context.task_id, done]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            std::cout << "finished " << task_id << "\n";
+            done(stageflow::kOk);
+        }).detach();
+        return stageflow::StageRunResult::Pending();
+    }
+};
+
 int main() {
     using Flow = stageflow::FlowController<RetouchContext>;
-    using Stage = stageflow::FunctionStage<RetouchContext>;
 
     auto flow = std::make_shared<Flow>();
     flow->context().file_id = 1001;
     flow->context().trace_id = "trace-preview-1001";
 
-    flow->add_stage(std::make_shared<Stage>(
-        "prepare_retouch",
-        [](RetouchContext& ctx, Stage::Done done) {
-            std::thread([&ctx, done]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                ctx.detect_info = "person-basic-detect-ready";
-                done(stageflow::kOk);
-            }).detach();
-            return stageflow::StageRunResult::Pending();
-        }));
-
-    flow->add_stage(std::make_shared<Stage>(
-        "create_task",
-        [](RetouchContext& ctx, Stage::Done) {
-            ctx.task_id = "preview-task-" + std::to_string(ctx.file_id);
-            return stageflow::StageRunResult::Succeeded();
-        }));
-
-    flow->add_stage(std::make_shared<Stage>(
-        "run_task",
-        [](RetouchContext& ctx, Stage::Done done) {
-            std::thread([task_id = ctx.task_id, done]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                std::cout << "finished " << task_id << "\n";
-                done(stageflow::kOk);
-            }).detach();
-            return stageflow::StageRunResult::Pending();
-        }));
+    flow->add_stage(std::make_shared<PrepareRetouchStage>());
+    flow->add_stage(std::make_shared<CreateTaskStage>());
+    flow->add_stage(std::make_shared<RunTaskStage>());
 
     std::mutex mutex;
     std::condition_variable cv;
