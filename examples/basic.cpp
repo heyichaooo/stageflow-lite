@@ -1,7 +1,7 @@
 #include <chrono>
 #include <iostream>
 #include <memory>
-#include <stageflow/flow.h>
+#include <stageflow/stageflow.h>
 #include <string>
 #include <thread>
 

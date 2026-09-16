@@ -28,7 +28,7 @@ FlowController 不理解业务数据，只负责推进顺序
 ## 基本用法
 
 ```cpp
-#include <stageflow/flow.h>
+#include <stageflow/stageflow.h>
 
 struct Context {
     int file_id = 0;
@@ -109,6 +109,22 @@ return stageflow::StageRunResult::Pending();
 `FlowController` 只关心 stage 是否完成，不关心 stage 内部怎么实现。
 
 一个 stage 内部可以直接写同步逻辑，也可以发起异步请求、调用旧模块、拆成多个私有函数，或者自己管理更细的内部步骤。框架只要求 stage 最终通过 `done(error)` 把结果交还给 `FlowController`。
+
+## 目录结构
+
+```text
+include/stageflow/
+  stageflow.h              # 推荐入口
+  flow.h                   # 兼容入口，转发到 stageflow.h
+  types.h                  # 错误码、状态、StageRunResult
+  stage.h                  # IStage 声明
+  flow_controller.h        # FlowController 声明
+  detail/
+    stage.inl              # IStage / StageRunResult 实现
+    flow_controller.inl    # FlowController 模板实现
+```
+
+模板代码需要放在头文件可见范围内，因此实现拆到了 `detail/*.inl`，再由对应声明头文件 include。
 
 ## 构建
 

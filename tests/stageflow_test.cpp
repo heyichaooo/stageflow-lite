@@ -3,7 +3,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
-#include <stageflow/flow.h>
+#include <stageflow/stageflow.h>
 #include <thread>
 
 struct TestContext {
